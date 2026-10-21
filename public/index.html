@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Math Climb</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Math Climb</h1>
+    <p class="tagline">Practice math at your level, with an AI tutor when you get stuck.</p>
+  </header>
+
+  <main>
+    <section id="level-picker" class="card">
+      <h2>1. Choose your level</h2>
+      <div id="levels" class="levels"></div>
+      <label class="topic-row">Topic
+        <select id="topic"></select>
+      </label>
+    </section>
+
+    <div class="workspace">
+      <section id="practice" class="card">
+        <div class="stats">
+          <span>Score: <strong id="score">0</strong>/<strong id="attempted">0</strong></span>
+          <span>Streak: <strong id="streak">0</strong></span>
+          <span>Best: <strong id="best">0</strong></span>
+        </div>
+        <p id="question" class="question">Pick a level to begin.</p>
+        <form id="answer-form" class="answer-row">
+          <input id="answer" autocomplete="off" placeholder="Your answer" aria-label="Your answer" />
+          <button type="submit">Check</button>
+        </form>
+        <p id="feedback" class="feedback" role="status"></p>
+        <div class="actions">
+          <button id="hint-btn" class="secondary" type="button">Hint</button>
+          <button id="show-btn" class="secondary" type="button">Show answer</button>
+          <button id="next-btn" type="button">Next problem</button>
+        </div>
+        <p id="hint" class="hint" hidden></p>
+      </section>
+
+      <section id="tutor" class="card">
+        <h2>AI tutor</h2>
+        <p id="tutor-status" class="muted">Ask about the current problem. The tutor will guide you step by step.</p>
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <div class="quick">
+          <button type="button" class="chip" data-q="I don't know where to start. Can you give me a hint?">Where do I start?</button>
+          <button type="button" class="chip" data-q="Can you check my answer and tell me where I went wrong?">Check my work</button>
+          <button type="button" class="chip" data-q="Please explain the full solution step by step.">Explain the solution</button>
+        </div>
+        <form id="chat-form" class="answer-row">
+          <input id="chat-input" autocomplete="off" placeholder="Ask the tutor…" aria-label="Message to tutor" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

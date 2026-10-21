@@ -1,0 +1,28 @@
+{
+  "name": "math-climb",
+  "version": "1.0.0",
+  "description": "Math practice by level with an AI tutor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tempest2234/Blue-.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tempest2234/Blue-/issues"
+  },
+  "homepage": "https://github.com/tempest2234/Blue-#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.0.0",
+    "express": "^5.3.0"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}

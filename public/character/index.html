@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rigged Anime Character</title>
+<style>
+  :root {
+    --bg: #f6f1fb; --panel: #ffffff; --ink: #2b2140; --muted: #7a6d92;
+    --line: #e4dcef; --accent: #8a5cf6; --accent-ink: #ffffff; --chip: #f1ebfa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17131f; --panel: #211b2d; --ink: #ece6f7; --muted: #a497bd;
+      --line: #342a47; --accent: #a17cff; --accent-ink: #120d1b; --chip: #2b2340;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .app { display: grid; grid-template-columns: 1fr 320px; height: 100vh; }
+  .stage { position: relative; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .hud { position: absolute; left: 16px; right: 16px; top: 12px; display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none; }
+  .hud button { pointer-events: auto; }
+  .tip { position: absolute; left: 16px; bottom: 12px; right: 16px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+  details { border-top: 1px solid var(--line); padding: 10px 0; }
+  summary { font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; }
+  summary::after { content: "+"; color: var(--muted); }
+  details[open] summary::after { content: "–"; }
+  .rows { display: grid; gap: 8px; margin-top: 10px; }
+  .row { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 8px; }
+  .row output { color: var(--muted); font-variant-numeric: tabular-nums; width: 34px; text-align: right; font-size: 12px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=color] { width: 100%; height: 28px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel); }
+  select { width: 100%; font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .swatch { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; background: var(--chip); border-color: transparent; }
+  .swatch i { width: 18px; height: 18px; border-radius: 50%; display: inline-block; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <canvas id="stage" aria-label="Animated character"></canvas>
+    <div class="hud">
+      <button id="hop" type="button">Hop</button>
+      <button id="dance" type="button">Dance</button>
+      <button id="rig" type="button">Show rig</button>
+    </div>
+    <div class="tip">Drag her to pick her up and drop her · click her head for a head pat · she follows your cursor · Space = hop</div>
+  </div>
+  <aside>
+    <h1>Character editor</h1>
+    <p class="sub">Recolor her, reshape her and tune the physics. Changes are saved in this browser.</p>
+    <details open><summary>Color presets</summary><div class="swatches" id="presets"></div></details>
+    <details open><summary>Colors</summary><div class="rows" id="colors"></div></details>
+    <details open><summary>Body &amp; hair</summary><div class="rows" id="body"></div></details>
+    <details open><summary>Pose &amp; expression</summary><div class="rows" id="pose"></div></details>
+    <details open><summary>Physics</summary><div class="rows" id="physics"></div></details>
+    <div class="btns">
+      <button id="random" type="button">Random colors</button>
+      <button id="reset" type="button">Reset all</button>
+      <button id="png" type="button">Save PNG</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- utilities
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+function hexRgb(h) {
+  h = h.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mix(a, b, t) {
+  const A = hexRgb(a), B = hexRgb(b);
+  return "#" + A.map((v, i) => Math.round(lerp(v, B[i], t)).toString(16).padStart(2, "0")).join("");
+}
+function rgba(h, a) { const [r, g, b] = hexRgb(h); return `rgba(${r},${g},${b},${a})`; }
+
+// ---------------------------------------------------------------- settings
+const PRESETS = {
+  Sakura:   { hair: "#f4a3c4", eyes: "#7048d8", skin: "#ffe4d6", blouse: "#ffffff", accent: "#353a74", skirt: "#3a4280", legwear: "#2a2236", boots: "#5b3a2e", blush: "#ff6f93" },
+  Midnight: { hair: "#2f2c52", eyes: "#e2445c", skin: "#f8dccd", blouse: "#2a2836", accent: "#b2243c", skirt: "#24222f", legwear: "#141218", boots: "#1b1a20", blush: "#ff6f86" },
+  Ocean:    { hair: "#86d3f2", eyes: "#1c86b4", skin: "#ffe7d9", blouse: "#f3fbff", accent: "#1d6aa6", skirt: "#2e8fc4", legwear: "#ffffff", boots: "#eef2f7", blush: "#ff8aa0" },
+  Ember:    { hair: "#e2592c", eyes: "#f0b52c", skin: "#f3d0b6", blouse: "#fff5e6", accent: "#6e2a1e", skirt: "#a8322a", legwear: "#3a2420", boots: "#3a2420", blush: "#ff6a5e" },
+  Mint:     { hair: "#9fe3c6", eyes: "#2f9e7a", skin: "#fff0e3", blouse: "#fffdf7", accent: "#e98aa6", skirt: "#f2b8c9", legwear: "#ffffff", boots: "#f7f3ee", blush: "#ff7d9b" },
+};
+const DEFAULTS = {
+  colors: { ...PRESETS.Sakura },
+  bust: 1.4, waist: 0.9, hips: 1.12, legs: 1.0, hairLen: 1.0, legwearOpacity: 0.8,
+  hairStyle: "long", pose: "idle", expression: "smile",
+  firmness: 0.4, bounce: 0.3, hairStiff: 0.45, wind: 0,
+};
+const STORE_KEY = "anime-rig-v1";
+let state = structuredClone(DEFAULTS);
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+  if (saved) state = { ...state, ...saved, colors: { ...state.colors, ...(saved.colors || {}) } };
+} catch {}
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {} }
+
+// Derived color tones (base, cel shadow, outline, highlight) for every material.
+let P = {};
+function buildPalette() {
+  const c = state.colors;
+  const tone = (h, dark = "#3a1f4f") => ({
+    base: h, shade: mix(h, dark, 0.3), deep: mix(h, "#1c0f24", 0.5),
+    line: mix(h, "#1c0f24", 0.62), light: mix(h, "#ffffff", 0.5),
+  });
+  P = {
+    hair: tone(c.hair), eyes: tone(c.eyes), blouse: tone(c.blouse, "#5a4a8a"),
+    accent: tone(c.accent), skirt: tone(c.skirt), leg: tone(c.legwear), boots: tone(c.boots),
+    skin: { base: c.skin, shade: mix(c.skin, "#d8687e", 0.3), line: mix(c.skin, "#6a2a35", 0.6), light: mix(c.skin, "#ffffff", 0.5) },
+    blush: c.blush,
+  };
+  P.lash = mix(c.hair, "#1a0d1f", 0.78);
+}
+
+// ---------------------------------------------------------------- skeleton
+// Each bone stores an offset and rotation relative to its parent; world
+// position/rotation are resolved top-down every step.
+const bones = {};
+function bone(name, parent, x, y) {
+  const b = { name, parent, x, y, rot: 0, wx: 0, wy: 0, wr: 0, kids: [] };
+  if (parent) parent.kids.push(b);
+  return (bones[name] = b);
+}
+const pelvis = bone("pelvis", null, 0, 0);
+const spine = bone("spine", pelvis, 0, 0);
+const neck = bone("neck", spine, 0, -174);
+const head = bone("head", neck, 0, -38);
+const legs = [-1, 1].map((s) => {
+  const thigh = bone("thigh" + s, pelvis, s * 34, 62);
+  const shin = bone("shin" + s, thigh, 0, 200);
+  const foot = bone("foot" + s, shin, 0, 182);
+  return { s, thigh, shin, foot, sim: { x: 0, y: 0, vx: 0, vy: 0 } };
+});
+const arms = [-1, 1].map((s) => {
+  const upper = bone("upper" + s, spine, s * 66, -158);
+  const fore = bone("fore" + s, upper, 0, 112);
+  const hand = bone("hand" + s, fore, 0, 100);
+  return { s, upper, fore, hand, cur: { a: 0.2, b: -0.15, h: -0.1 } };
+});
+
+function resolve(b) {
+  const p = b.parent;
+  if (p) {
+    const c = Math.cos(p.wr), s = Math.sin(p.wr);
+    b.wx = p.wx + b.x * c - b.y * s;
+    b.wy = p.wy + b.x * s + b.y * c;
+    b.wr = p.wr + b.rot;
+  } else { b.wx = b.x; b.wy = b.y; b.wr = b.rot; }
+}
+function resolveAll(b) { resolve(b); b.kids.forEach(resolveAll); }
+function toWorld(b, lx, ly) {
+  const c = Math.cos(b.wr), s = Math.sin(b.wr);
+  return [b.wx + lx * c - ly * s, b.wy + lx * s + ly * c];
+}
+function toLocal(b, x, y) {
+  const c = Math.cos(-b.wr), s = Math.sin(-b.wr), dx = x - b.wx, dy = y - b.wy;
+  return [dx * c - dy * s, dx * s + dy * c];
+}
+const thighLen = () => 200 * state.legs;
+const shinLen = () => 182 * state.legs;
+const groundAnkle = () => 62 + (thighLen() + shinLen()) * 0.985;
+const floorY = () => groundAnkle() + 40;
+
+// ---------------------------------------------------------------- physics: hair & ribbons
+class Strand {
+  constructor(o) {
+    Object.assign(this, { stiff: 1, profile: "taper", collide: 0, n: 8 }, o);
+    this.seg = this.len / (this.n - 1);
+    this.reset();
+  }
+  restDir() {
+    const r = this.node.wr, [dx, dy] = this.dir, l = Math.hypot(dx, dy);
+    return [(dx * Math.cos(r) - dy * Math.sin(r)) / l, (dx * Math.sin(r) + dy * Math.cos(r)) / l];
+  }
+  reset() {
+    const [ax, ay] = toWorld(this.node, this.ax, this.ay), [dx, dy] = this.restDir();
+    this.p = []; this.q = [];
+    for (let i = 0; i < this.n; i++) {
+      this.p.push([ax + dx * this.seg * i, ay + dy * this.seg * i]);
+      this.q.push([ax + dx * this.seg * i, ay + dy * this.seg * i]);
+    }
+  }
+  step(dt, env) {
+    const { p, q, n, seg } = this;
+    const [ax, ay] = toWorld(this.node, this.ax, this.ay);
+    p[0][0] = q[0][0] = ax; p[0][1] = q[0][1] = ay;
+    for (let i = 1; i < n; i++) {
+      const vx = (p[i][0] - q[i][0]) * env.damp, vy = (p[i][1] - q[i][1]) * env.damp;
+      q[i][0] = p[i][0]; q[i][1] = p[i][1];
+      p[i][0] += vx + env.wind(i) * dt * dt;
+      p[i][1] += vy + env.gravity * dt * dt;
+    }
+    // Shape memory: pull each segment toward the hairstyle's rest direction.
+    const rd = this.restDir(), k = env.stiff * this.stiff;
+    for (let i = 1; i < n; i++) {
+      let dx = rd[0], dy = rd[1];
+      if (i > 1) {
+        const ex = p[i - 1][0] - p[i - 2][0], ey = p[i - 1][1] - p[i - 2][1], l = Math.hypot(ex, ey) || 1;
+        dx = lerp(ex / l, rd[0], 0.3); dy = lerp(ey / l, rd[1], 0.3);
+      }
+      const l = Math.hypot(dx, dy) || 1, kk = k * (1 - 0.6 * i / n);
+      p[i][0] += (p[i - 1][0] + (dx / l) * seg - p[i][0]) * kk;
+      p[i][1] += (p[i - 1][1] + (dy / l) * seg - p[i][1]) * kk;
+    }
+    // Keep front locks from swinging through the face.
+    if (this.collide) {
+      for (let i = 1; i < n; i++) {
+        const [lx, ly] = toLocal(head, p[i][0], p[i][1]);
+        if (ly < 20 && this.collide * lx < 50) [p[i][0], p[i][1]] = toWorld(head, this.collide * 50, ly);
+      }
+    }
+    for (let i = 1; i < n; i++) {
+      const dx = p[i][0] - p[i - 1][0], dy = p[i][1] - p[i - 1][1], l = Math.hypot(dx, dy) || 1;
+      p[i][0] = p[i - 1][0] + (dx / l) * seg;
+      p[i][1] = p[i - 1][1] + (dy / l) * seg;
+    }
+  }
+}
+
+let backStrands = [], tailStrands = [], frontStrands = [], ribbonStrands = [];
+function buildHair() {
+  resolveAll(pelvis);
+  const L = state.hairLen, style = state.hairStyle;
+  backStrands = []; tailStrands = []; frontStrands = [];
+  const backLen = style === "long" ? 300 * L : style === "bob" ? 70 + 40 * L : 60;
+  for (let i = 0; i < 9; i++) {
+    const t = (i / 8) * 2 - 1;
+    backStrands.push(new Strand({
+      node: head, ax: t * 56, ay: -14 - Math.abs(t) * 10, dir: [t * 0.15, 1],
+      len: backLen * (0.82 + 0.18 * (1 - Math.abs(t))), width: 30, n: 9,
+    }));
+  }
+  if (style === "twin") {
+    for (const s of [-1, 1]) tailStrands.push(new Strand({
+      node: head, ax: s * 58, ay: -100, dir: [s * 0.9, 0.5], len: 330 * L, width: 46, n: 12, profile: "tail", stiff: 1.5,
+    }));
+  }
+  if (style === "pony") {
+    tailStrands.push(new Strand({
+      node: head, ax: 22, ay: -118, dir: [0.75, 0.6], len: 320 * L, width: 50, n: 12, profile: "tail", stiff: 1.6,
+    }));
+  }
+  const sideLen = style === "bob" ? 80 : 110 + 60 * Math.min(L, 1.2);
+  for (const s of [-1, 1]) frontStrands.push(new Strand({
+    node: head, ax: s * 52, ay: -58, dir: [s * 0.12, 1], len: sideLen, width: 17, n: 7, stiff: 1.3, collide: s,
+  }));
+  ribbonStrands = [-1, 1].map((s) => new Strand({
+    node: spine, ax: s * 3, ay: -166, dir: [s * 0.3, 1], len: 48, width: 10, n: 5, profile: "ribbon", stiff: 2,
+  }));
+}
+
+// ---------------------------------------------------------------- physics: soft body springs
+// Spring-mass points that trail an anchor on the body; inertia makes them
+// lag, overshoot and settle, which is the jiggle.
+const bust = [-1, 1].map((s) => ({ s, x: 0, y: 0, vx: 0, vy: 0, px: null, py: null, ox: 0, oy: 0 }));
+const SKIRT_N = 11;
+const skirt = Array.from({ length: SKIRT_N }, (_, i) => ({ i, x: 0, y: 0, vx: 0, vy: 0, px: null, py: null }));
+const bustGeom = (s) => {
+  const b = state.bust;
+  return { cx: s * (22 + 9 * b), cy: -118 - breath * 1.4, r: 27 * b };
+};
+const skirtLen = () => 150;
+const skirtWaist = () => 44 * state.waist + 4;
+const skirtHem = () => 96 * state.hips;
+function skirtAnchor(i) {
+  const t = (i / (SKIRT_N - 1)) * 2 - 1;
+  return toWorld(pelvis, t * skirtHem(), skirtLen() + 10 * (1 - t * t));
+}
+function springStep(m, ax, ay, k, c, dt) {
+  if (m.px === null) { m.x = m.px = ax; m.y = m.py = ay; m.vx = m.vy = 0; }
+  const avx = (ax - m.px) / dt, avy = (ay - m.py) / dt;
+  m.px = ax; m.py = ay;
+  m.vx += (-k * (m.x - ax) - c * (m.vx - avx)) * dt;
+  m.vy += (-k * (m.y - ay) - c * (m.vy - avy)) * dt;
+  m.x += m.vx * dt; m.y += m.vy * dt;
+}
+
+// ---------------------------------------------------------------- poses
+const POSES = {
+  idle:  { L: { a: 0.2, b: -0.15, h: -0.1 }, R: { a: 0.2, b: -0.15, h: -0.1 }, tilt: 0 },
+  hips:  { L: { a: 0.78, b: -1.72, h: -0.6 }, R: { a: 0.78, b: -1.72, h: -0.6 }, tilt: -0.05 },
+  wave:  { L: { a: 0.2, b: -0.15, h: -0.1 }, R: { a: 2.36, b: 0.58, h: 0.2 }, tilt: 0.06 },
+  cheer: { L: { a: 2.55, b: 0.35, h: 0.1 }, R: { a: 2.55, b: 0.35, h: 0.1 }, tilt: 0 },
+  shy:   { L: { a: -0.06, b: -0.8, h: -0.4 }, R: { a: -0.06, b: -0.8, h: -0.4 }, tilt: 0.1 },
+};
+
+// ---------------------------------------------------------------- simulation state
+let t = 0, breath = 0, dancing = false, showRig = false;
+const root = { x: 0, y: 0, vx: 0, vy: 0, mode: "ground" };
+let crouch = 0, crouchV = 0, tilt = 0;
+const look = { x: 0, y: 0, tx: 0, ty: 0 };
+let pointer = null, lastPointerMove = -10;
+let blink = 0, nextBlink = 2, patTimer = 0;
+const drag = { active: false, down: false, sx: 0, sy: 0, ox: 0, oy: 0, tx: 0, ty: 0, onHead: false };
+
+function step(dt) {
+  t += dt;
+  breath = Math.sin(t * 2.1);
+
+  // Root motion: dragging, falling, or springing home.
+  if (root.mode === "drag") {
+    root.vx += (500 * (drag.tx - root.x) - 45 * root.vx) * dt;
+    root.vy += (500 * (drag.ty - root.y) - 45 * root.vy) * dt;
+  } else if (root.mode === "air") {
+    root.vy += 3200 * dt;
+    root.vx *= 0.995;
+    if (root.y >= 0 && root.vy > 0) {
+      crouchV += root.vy * 0.4; root.y = 0; root.vy = 0; root.mode = "ground";
+    }
+  } else {
+    root.vx += (120 * -root.x - 22 * root.vx) * dt;
+    root.vy += (120 * -root.y - 22 * root.vy) * dt;
+  }
+  root.x += root.vx * dt; root.y += root.vy * dt;
+  crouchV += (-170 * crouch - 14 * crouchV) * dt;
+  crouch = clamp(crouch + crouchV * dt, -30, 110);
+
+  // Body animation layered on the rig.
+  const beat = t * Math.PI * 1.8;
+  const bob = dancing ? 16 * (0.5 - 0.5 * Math.cos(beat * 2)) : 0;
+  const sway = dancing ? 0.08 * Math.sin(beat) : 0.02 * Math.sin(t * 0.8);
+  pelvis.x = root.x;
+  pelvis.y = root.y + crouch + bob;
+  pelvis.rot = sway;
+  spine.rot = -sway * 1.3 + 0.01 * Math.sin(t * 1.1);
+  neck.y = -174 - breath * 1.0;
+
+  const pose = POSES[state.pose] || POSES.idle;
+  tilt = lerp(tilt, pose.tilt + (patTimer > 0 ? 0.12 : 0), 0.05);
+  for (const arm of arms) {
+    const tgt = { ...(arm.s < 0 ? pose.L : pose.R) };
+    if (state.pose === "idle" || (state.pose === "wave" && arm.s < 0)) tgt.a += 0.12 * (state.bust - 1);
+    if (state.pose === "wave" && arm.s > 0) { tgt.b += 0.35 * Math.sin(t * 9); tgt.h += 0.2 * Math.sin(t * 9 - 0.6); }
+    if (state.pose === "cheer") tgt.a += 0.12 * Math.sin(t * 6 + arm.s);
+    if (dancing) { tgt.a += 0.18 * Math.sin(beat + arm.s); tgt.b += 0.2 * Math.sin(beat * 2 + arm.s); }
+    for (const k of ["a", "b", "h"]) arm.cur[k] = lerp(arm.cur[k], tgt[k], 1 - Math.exp(-dt * 9));
+    arm.upper.y = -158 - breath * 1.2;
+    arm.upper.rot = -arm.s * arm.cur.a;
+    arm.fore.rot = -arm.s * arm.cur.b;
+    arm.hand.rot = -arm.s * arm.cur.h;
+  }
+
+  // Look-at: eyes and head follow the pointer, otherwise glance around.
+  resolve(pelvis); resolve(spine); resolve(neck); resolve(head);
+  const [hx, hy] = toWorld(head, 0, -40);
+  if (pointer && t - lastPointerMove < 4) {
+    look.tx = clamp((pointer.x - hx) / 320, -1, 1);
+    look.ty = clamp((pointer.y - hy) / 320, -1, 1);
+  } else if (Math.random() < dt * 0.4) {
+    look.tx = (Math.random() * 2 - 1) * 0.5; look.ty = (Math.random() * 2 - 1) * 0.3;
+  }
+  if (state.pose === "shy") look.ty = Math.max(look.ty, 0.5);
+  look.x = lerp(look.x, look.tx, 1 - Math.exp(-dt * 10));
+  look.y = lerp(look.y, look.ty, 1 - Math.exp(-dt * 10));
+  neck.rot = look.x * 0.04 + sway * 0.6;
+  head.rot = look.x * 0.1 + tilt + (dancing ? 0.06 * Math.sin(beat) : 0);
+
+  nextBlink -= dt;
+  if (nextBlink <= 0) { blink = 0.16; nextBlink = 2 + Math.random() * 3.5; }
+  blink = Math.max(0, blink - dt);
+  patTimer = Math.max(0, patTimer - dt);
+
+  // Legs: two-bone IK toward planted feet, or dangling feet while lifted.
+  resolve(pelvis);
+  const lift = clamp(-root.y / 60, 0, 1);
+  const L1 = thighLen(), L2 = shinLen();
+  legs[0].thigh.y = legs[1].thigh.y = 62;
+  for (const leg of legs) {
+    const { s, thigh, shin, foot, sim } = leg;
+    thigh.x = s * 30 * Math.pow(state.hips, 0.7);
+    const [hipX, hipY] = toWorld(pelvis, thigh.x, thigh.y);
+    const hangX = hipX + s * 6, hangY = hipY + (L1 + L2) * 0.97;
+    if (lift <= 0) { sim.x = hangX; sim.y = hangY; sim.vx = sim.vy = 0; }
+    sim.vx += (90 * (hangX - sim.x) - 7 * sim.vx) * dt;
+    sim.vy += (90 * (hangY - sim.y) - 7 * sim.vy) * dt;
+    sim.x += sim.vx * dt; sim.y += sim.vy * dt;
+    const tx = lerp(root.x + s * 34, sim.x, lift), ty = lerp(groundAnkle(), sim.y, lift);
+    const dx = tx - hipX, dy = ty - hipY;
+    // Seen from the front, a knee bending toward the viewer mostly shortens
+    // the leg, so foreshorten both bones and keep only a slight inward bend.
+    const f = clamp(Math.hypot(dx, dy) / ((L1 + L2) * 0.998), 0.55, 1);
+    const l1 = L1 * f, l2 = L2 * f;
+    leg.l1 = l1; leg.l2 = l2; shin.y = l1; foot.y = l2;
+    const d = clamp(Math.hypot(dx, dy), Math.abs(l1 - l2) + 1, l1 + l2 - 0.5);
+    const aim = Math.atan2(dy, dx);
+    const A = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+    const thighAng = aim + s * A; // knees bend inward
+    const kx = hipX + Math.cos(thighAng) * l1, ky = hipY + Math.sin(thighAng) * l1;
+    const shinAng = Math.atan2(ty - ky, tx - kx);
+    thigh.rot = thighAng - Math.PI / 2 - pelvis.wr;
+    shin.rot = shinAng - thighAng;
+    foot.rot = -(shinAng - Math.PI / 2) + s * 0.12;
+  }
+  resolveAll(pelvis);
+
+  // Soft-body springs.
+  const k = lerp(40, 420, state.firmness), c = lerp(28, 2.5, state.bounce);
+  for (const m of bust) {
+    const g = bustGeom(m.s);
+    const [ax, ay] = toWorld(spine, g.cx, g.cy);
+    springStep(m, ax, ay, k * (m.s < 0 ? 1 : 1.07), c, dt);
+    let ox = m.x - ax, oy = m.y - ay;
+    const lim = g.r * 0.55, mag = Math.hypot(ox, oy);
+    if (mag > lim) { ox *= lim / mag; oy *= lim / mag; m.x = ax + ox; m.y = ay + oy; }
+    const cs = Math.cos(-spine.wr), sn = Math.sin(-spine.wr);
+    m.ox = (ox * cs - oy * sn) * 0.65; m.oy = ox * sn + oy * cs;
+  }
+  const windF = state.wind * 1400 * (0.6 + 0.4 * Math.sin(t * 1.3));
+  for (const m of skirt) {
+    const [ax, ay] = skirtAnchor(m.i);
+    springStep(m, ax, ay, 130 * (1 + 0.15 * Math.sin(m.i * 1.7)), 7, dt);
+    m.vx += windF * 0.4 * dt;
+  }
+
+  // Hair and ribbons.
+  const env = {
+    gravity: 2600, damp: 0.975, stiff: lerp(0.015, 0.22, state.hairStiff),
+    wind: (i) => windF * (0.7 + 0.3 * Math.sin(t * 3 + i * 0.7)),
+  };
+  for (const s of [...backStrands, ...tailStrands, ...frontStrands, ...ribbonStrands]) s.step(dt, env);
+}
+
+// ---------------------------------------------------------------- rendering
+const cv = document.getElementById("stage");
+const ctx = cv.getContext("2d");
+let dpr = 1, vs = 1, vx = 0, vy = 0;
+function layout() {
+  const r = cv.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  const top = -350, bottom = floorY() + 20;
+  vs = Math.min(cv.height / (bottom - top + 50), cv.width / 560);
+  vx = cv.width / 2;
+  vy = (cv.height - (bottom - top) * vs) / 2 - top * vs;
+}
+function setView() { ctx.setTransform(vs, 0, 0, vs, vx, vy); }
+function setBone(b) {
+  const c = Math.cos(b.wr) * vs, s = Math.sin(b.wr) * vs;
+  ctx.setTransform(c, s, -s, c, b.wx * vs + vx, b.wy * vs + vy);
+}
+function screenToWorld(px, py) { return { x: (px * dpr - vx) / vs, y: (py * dpr - vy) / vs }; }
+
+// Cel shading: fill the shadow tone, then the base tone shifted toward the
+// light (up-left) inside the same clip, leaving a crisp shadow band.
+function cel(p, tone, { dx = -5, dy = -4, lw = 2, line = true } = {}) {
+  ctx.save();
+  ctx.clip(p);
+  ctx.fillStyle = tone.shade; ctx.fill(p);
+  ctx.translate(dx, dy);
+  ctx.fillStyle = tone.base; ctx.fill(p);
+  ctx.restore();
+  if (line) { ctx.strokeStyle = tone.line; ctx.lineWidth = lw; ctx.lineJoin = "round"; ctx.stroke(p); }
+}
+function ellipsePath(x, y, rx, ry, rot = 0) { const p = new Path2D(); p.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); return p; }
+
+function drawBackground() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const g = ctx.createLinearGradient(0, 0, 0, cv.height);
+  g.addColorStop(0, "#fde7f1"); g.addColorStop(0.6, "#efe4ff"); g.addColorStop(1, "#dcd2f5");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  for (let i = 0; i < 40; i++) {
+    const x = ((i * 137.5) % 1) * 0 + ((i * 97) % 100) / 100 * cv.width;
+    const y = ((i * 61) % 100) / 100 * cv.height * 0.8;
+    const r = (2 + (i % 4)) * dpr * (0.8 + 0.2 * Math.sin(t * 1.5 + i));
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  setView();
+  const fy = floorY();
+  ctx.fillStyle = "rgba(90,60,140,0.12)";
+  ctx.fillRect(-2000, fy, 4000, 2000);
+  const lift = clamp(-root.y / 400, 0, 0.7);
+  ctx.fillStyle = `rgba(60,30,90,${0.22 * (1 - lift)})`;
+  ctx.beginPath(); ctx.ellipse(root.x, fy, 120 * (1 - lift * 0.5), 16 * (1 - lift * 0.5), 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function strandWidth(st, u) {
+  if (st.profile === "tail") return (0.55 + 0.7 * Math.sin(Math.PI * Math.min(u, 1) * 0.9)) * (1 - Math.pow(u, 2.2));
+  if (st.profile === "ribbon") return u > 0.92 ? 0.4 : 1;
+  return (0.9 + 0.1 * Math.sin(u * Math.PI)) * (1 - Math.pow(u, 1.6));
+}
+function drawStrand(st, tone) {
+  const p = st.p, n = p.length, Lp = [], Rp = [], mids = [];
+  for (let i = 0; i < n; i++) {
+    const a = p[Math.max(0, i - 1)], b = p[Math.min(n - 1, i + 1)];
+    let tx = b[0] - a[0], ty = b[1] - a[1]; const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
+    const w = (st.width * strandWidth(st, i / (n - 1))) / 2;
+    Lp.push([p[i][0] - ty * w, p[i][1] + tx * w]);
+    Rp.push([p[i][0] + ty * w, p[i][1] - tx * w]);
+    mids.push([p[i][0] + ty * w * 0.45, p[i][1] - tx * w * 0.45]);
+  }
+  const path = new Path2D();
+  path.moveTo(Lp[0][0], Lp[0][1]);
+  for (let i = 1; i < n - 1; i++) path.quadraticCurveTo(Lp[i][0], Lp[i][1], (Lp[i][0] + Lp[i + 1][0]) / 2, (Lp[i][1] + Lp[i + 1][1]) / 2);
+  if (st.profile === "ribbon") { path.lineTo(Lp[n - 1][0], Lp[n - 1][1]); path.lineTo(p[n - 2][0], p[n - 2][1]); path.lineTo(Rp[n - 1][0], Rp[n - 1][1]); }
+  else path.lineTo(p[n - 1][0], p[n - 1][1]);
+  for (let i = n - 2; i >= 1; i--) path.quadraticCurveTo(Rp[i][0], Rp[i][1], (Rp[i][0] + Rp[i - 1][0]) / 2, (Rp[i][1] + Rp[i - 1][1]) / 2);
+  path.lineTo(Rp[0][0], Rp[0][1]);
+  path.closePath();
+  ctx.fillStyle = tone.base; ctx.fill(path);
+  ctx.save(); ctx.clip(path);
+  ctx.strokeStyle = tone.shade; ctx.lineWidth = st.width * 0.55; ctx.lineCap = "round";
+  ctx.beginPath(); mids.forEach((m, i) => (i ? ctx.lineTo(m[0], m[1]) : ctx.moveTo(m[0], m[1]))); ctx.stroke();
+  if (st.profile !== "ribbon") {
+    ctx.strokeStyle = rgba(tone.light, 0.8); ctx.lineWidth = 3;
+    const a = Math.floor(n * 0.12), b = Math.max(a + 1, Math.floor(n * 0.38));
+    ctx.beginPath();
+    for (let i = a; i <= b; i++) { const x = lerp(p[i][0], Lp[i][0], 0.4), y = lerp(p[i][1], Lp[i][1], 0.4); i === a ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = tone.line; ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.stroke(path);
+}
+
+// --- head
+function facePath() {
+  const p = new Path2D();
+  p.moveTo(-55, -64);
+  p.bezierCurveTo(-55, -30, -46, -12, -26, 2);
+  p.quadraticCurveTo(-10, 11, 0, 11);
+  p.quadraticCurveTo(10, 11, 26, 2);
+  p.bezierCurveTo(46, -12, 55, -30, 55, -64);
+  p.arc(0, -64, 55, 0, Math.PI, true);
+  p.closePath();
+  return p;
+}
+function capPath() {
+  const p = new Path2D();
+  p.moveTo(-61, -40);
+  p.bezierCurveTo(-68, -104, -38, -133, 0, -133);
+  p.bezierCurveTo(38, -133, 68, -104, 61, -40);
+  const locks = [[52, -10, 40, -68], [30, -52, 20, -82], [8, -56, -4, -80], [-17, -54, -28, -82], [-38, -50, -46, -66], [-54, -10, -61, -40]];
+  let px = 61, py = -40;
+  for (const [tx, ty, nx, ny] of locks) {
+    p.quadraticCurveTo(lerp(px, tx, 0.15), lerp(py, ty, 0.7), tx, ty);
+    p.quadraticCurveTo(lerp(tx, nx, 0.6), lerp(ty, ny, 0.15), nx, ny);
+    px = nx; py = ny;
+  }
+  p.closePath();
+  return p;
+}
+function drawBackHairMass() {
+  setBone(head);
+  const p = new Path2D();
+  p.moveTo(-64, -50);
+  p.bezierCurveTo(-70, -112, -40, -138, 0, -138);
+  p.bezierCurveTo(40, -138, 70, -112, 64, -50);
+  p.bezierCurveTo(66, -20, 60, 0, 48, 6);
+  p.lineTo(-48, 6);
+  p.bezierCurveTo(-60, 0, -66, -20, -64, -50);
+  p.closePath();
+  ctx.fillStyle = P.hair.shade; ctx.fill(p);
+  ctx.strokeStyle = P.hair.line; ctx.lineWidth = 1.6; ctx.stroke(p);
+}
+function drawEye(cx, cy, side, open, happy) {
+  const X = (x) => cx + x * side;
+  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = P.lash;
+  if (happy) {
+    ctx.lineWidth = 3.6;
+    ctx.beginPath(); ctx.moveTo(X(-13), cy + 3); ctx.quadraticCurveTo(X(0), cy - 13, X(14), cy + 3); ctx.stroke();
+    return;
+  }
+  if (open < 0.15) {
+    ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(X(-15), cy - 1); ctx.quadraticCurveTo(X(0), cy + 6, X(16), cy - 2); ctx.lineTo(X(20), cy - 5); ctx.stroke();
+    return;
+  }
+  ctx.save();
+  ctx.translate(0, cy); ctx.scale(1, open); ctx.translate(0, -cy);
+  const w = new Path2D();
+  w.moveTo(X(-15), cy - 5);
+  w.quadraticCurveTo(X(-11), cy - 18, X(1), cy - 19);
+  w.quadraticCurveTo(X(13), cy - 19, X(16), cy - 8);
+  w.quadraticCurveTo(X(15), cy + 8, X(5), cy + 15);
+  w.quadraticCurveTo(X(-6), cy + 17, X(-12), cy + 10);
+  w.quadraticCurveTo(X(-16), cy + 3, X(-15), cy - 5);
+  ctx.fillStyle = "#fffaf8"; ctx.fill(w);
+  const ix = cx + look.x * 5 + side, iy = cy + 2 + look.y * 3;
+  ctx.save(); ctx.clip(w);
+  const g = ctx.createLinearGradient(0, iy - 15, 0, iy + 14);
+  g.addColorStop(0, P.eyes.deep); g.addColorStop(0.45, P.eyes.base); g.addColorStop(1, P.eyes.light);
+  ctx.fillStyle = g; ctx.fill(ellipsePath(ix, iy, 10.5, 14));
+  ctx.strokeStyle = P.eyes.line; ctx.lineWidth = 1.4; ctx.stroke(ellipsePath(ix, iy, 10.5, 14));
+  ctx.fillStyle = mix(state.colors.eyes, "#0d0612", 0.75); ctx.fill(ellipsePath(ix, iy + 1, 4.6, 7));
+  ctx.fillStyle = rgba(P.eyes.light, 0.6); ctx.fill(ellipsePath(ix, iy + 8, 6, 3.4));
+  ctx.fillStyle = "rgba(80,40,100,0.22)"; ctx.fill(ellipsePath(cx, cy - 21, 24, 9));
+  ctx.restore();
+  ctx.fillStyle = "#ffffff";
+  ctx.fill(ellipsePath(ix - 4, iy - 6, 3.6, 4.6));
+  ctx.fill(ellipsePath(ix + 4, iy + 6, 1.8, 1.8));
+  ctx.strokeStyle = P.lash; ctx.lineWidth = 4.4;
+  ctx.beginPath();
+  ctx.moveTo(X(-16), cy - 4);
+  ctx.quadraticCurveTo(X(-10), cy - 20, X(2), cy - 20.5);
+  ctx.quadraticCurveTo(X(14), cy - 20, X(18), cy - 9);
+  ctx.lineTo(X(22), cy - 13);
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(X(5), cy + 15); ctx.quadraticCurveTo(X(12), cy + 12, X(15), cy + 5); ctx.stroke();
+  ctx.restore();
+}
+function drawHead() {
+  setBone(head);
+  const face = facePath();
+  cel(face, P.skin, { dx: -6, dy: -3, lw: 2 });
+  const fx = look.x * 5, fy = look.y * 3;
+  // Bang shadow on the forehead.
+  ctx.save(); ctx.clip(face);
+  ctx.translate(2, 7); ctx.fillStyle = P.skin.shade; ctx.fill(capPath());
+  ctx.restore();
+
+  const happy = patTimer > 0;
+  const expr = happy ? "grin" : state.expression;
+  const open = (1 - Math.sin(clamp(blink / 0.16, 0, 1) * Math.PI)) * (expr === "surprised" ? 1.1 : 1);
+  // Blush
+  const blushA = happy || expr === "shy" || state.pose === "shy" ? 0.6 : 0.32;
+  for (const s of [-1, 1]) {
+    ctx.fillStyle = rgba(P.blush, blushA);
+    ctx.fill(ellipsePath(s * 32 + fx, -16 + fy, 11, 5));
+    ctx.strokeStyle = rgba(P.blush, blushA + 0.2); ctx.lineWidth = 1.2;
+    for (let k = -1; k <= 1; k++) {
+      ctx.beginPath(); ctx.moveTo(s * 32 + fx + k * 5 + 2, -19 + fy); ctx.lineTo(s * 32 + fx + k * 5 - 2, -13 + fy); ctx.stroke();
+    }
+  }
+  for (const s of [-1, 1]) drawEye(s * 23 + fx, -34 + fy, s, open, happy);
+  // Nose
+  ctx.strokeStyle = rgba(P.skin.line, 0.6); ctx.lineWidth = 1.4; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(fx * 1.2 + 1.5, -19 + fy); ctx.lineTo(fx * 1.2 - 0.5, -15 + fy); ctx.stroke();
+  // Mouth
+  ctx.save(); ctx.translate(fx * 1.1, -2 + fy);
+  const mouthLine = "#8a3344";
+  ctx.strokeStyle = mouthLine; ctx.lineWidth = 1.9;
+  if (expr === "grin") {
+    const m = new Path2D(); m.moveTo(-9, -4); m.quadraticCurveTo(0, -1, 9, -4); m.quadraticCurveTo(7, 8, 0, 9); m.quadraticCurveTo(-7, 8, -9, -4);
+    ctx.fillStyle = "#7a2436"; ctx.fill(m);
+    ctx.save(); ctx.clip(m); ctx.fillStyle = "#ff8fa3"; ctx.fill(ellipsePath(0, 8, 6, 3.5)); ctx.restore();
+    ctx.stroke(m);
+  } else if (expr === "surprised") {
+    ctx.fillStyle = "#7a2436"; ctx.fill(ellipsePath(0, 2, 4, 5.5)); ctx.stroke(ellipsePath(0, 2, 4, 5.5));
+  } else if (expr === "neutral") {
+    ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.stroke();
+  } else if (expr === "shy") {
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.quadraticCurveTo(-3, -2.5, 0, 0); ctx.quadraticCurveTo(3, 2.5, 6, 0); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.moveTo(-7, -3); ctx.quadraticCurveTo(0, 4, 7, -3); ctx.stroke();
+  }
+  ctx.restore();
+  return { expr, fx, fy };
+}
+function drawFrontHair(info) {
+  setView();
+  for (const st of frontStrands) drawStrand(st, P.hair);
+  setBone(head);
+  const cap = capPath();
+  cel(cap, P.hair, { dx: -5, dy: -6, lw: 2 });
+  // Angel-ring highlight.
+  ctx.save(); ctx.clip(cap);
+  const ring = new Path2D();
+  const N = 14;
+  for (let i = 0; i <= N; i++) {
+    const a = lerp(-2.55, -0.6, i / N), r = i % 2 ? 44 : 48.5;
+    const x = Math.cos(a) * r, y = -70 + Math.sin(a) * r * 0.9;
+    i ? ring.lineTo(x, y) : ring.moveTo(x, y);
+  }
+  for (let i = N; i >= 0; i--) {
+    const a = lerp(-2.65, -0.5, i / N);
+    ring.lineTo(Math.cos(a) * 52, -70 + Math.sin(a) * 52 * 0.9);
+  }
+  ctx.fillStyle = rgba(P.hair.light, 0.5); ctx.fill(ring);
+  ctx.restore();
+  // Brows sit over the bangs, anime style.
+  const raise = info.expr === "surprised" ? -4 : 0;
+  ctx.strokeStyle = rgba(P.lash, 0.85); ctx.lineWidth = 2.3; ctx.lineCap = "round";
+  for (const s of [-1, 1]) {
+    const cx = s * 23 + info.fx, cy = -34 + info.fy + raise;
+    const inner = info.expr === "shy" || state.pose === "shy" ? -3 : 0;
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 12, cy - 25 + inner);
+    ctx.quadraticCurveTo(cx + s * 1, cy - 31, cx + s * 15, cy - 26);
+    ctx.stroke();
+  }
+  if (state.hairStyle === "twin" || state.hairStyle === "pony") {
+    const spots = state.hairStyle === "twin" ? [[-57, -100], [57, -100]] : [[24, -120]];
+    for (const [x, y] of spots) {
+      for (const s of [-1, 1]) {
+        const b = new Path2D(); b.moveTo(x, y); b.lineTo(x + s * 16, y - 10); b.lineTo(x + s * 16, y + 10); b.closePath();
+        cel(b, P.accent, { dx: -2, dy: -2, lw: 1.5 });
+      }
+      cel(ellipsePath(x, y, 5, 6), P.accent, { dx: -1, dy: -1, lw: 1.5 });
+    }
+  }
+}
+
+// --- body
+function torsoPath() {
+  const ww = 44 * state.waist, p = new Path2D();
+  p.moveTo(-16, -180);
+  p.quadraticCurveTo(-40, -176, -62, -168);
+  p.quadraticCurveTo(-80, -160, -76, -136);
+  p.bezierCurveTo(-72, -110, -60, -100, -58, -86);
+  p.bezierCurveTo(-54, -60, -ww, -30, -ww, 8);
+  p.lineTo(ww, 8);
+  p.bezierCurveTo(ww, -30, 54, -60, 58, -86);
+  p.bezierCurveTo(60, -100, 72, -110, 76, -136);
+  p.quadraticCurveTo(80, -160, 62, -168);
+  p.quadraticCurveTo(40, -176, 16, -180);
+  p.quadraticCurveTo(0, -170, -16, -180);
+  p.closePath();
+  return p;
+}
+function bustPath(cx, cy, r, rx, ry) {
+  const p = new Path2D();
+  p.moveTo(cx, cy - ry);
+  p.bezierCurveTo(cx + rx * 0.55, cy - ry, cx + rx, cy - ry * 0.45, cx + rx, cy + ry * 0.1);
+  p.bezierCurveTo(cx + rx, cy + ry * 0.6, cx + rx * 0.55, cy + ry * 0.9, cx, cy + ry * 0.9);
+  p.bezierCurveTo(cx - rx * 0.55, cy + ry * 0.9, cx - rx, cy + ry * 0.6, cx - rx, cy + ry * 0.1);
+  p.bezierCurveTo(cx - rx, cy - ry * 0.45, cx - rx * 0.55, cy - ry, cx, cy - ry);
+  p.closePath();
+  return p;
+}
+function drawNeck() {
+  setBone(neck);
+  const p = new Path2D();
+  p.moveTo(-13, 6); p.lineTo(-12, -44); p.lineTo(12, -44); p.lineTo(13, 6); p.closePath();
+  cel(p, P.skin, { dx: -4, dy: 0, lw: 1.8 });
+  ctx.save(); ctx.clip(p); ctx.fillStyle = P.skin.shade; ctx.fill(ellipsePath(0, -36, 18, 14)); ctx.restore();
+}
+function drawTorso() {
+  setBone(spine);
+  const torso = torsoPath();
+  cel(torso, P.blouse, { dx: -6, dy: -4, lw: 2.2 });
+  // Corset / waist cincher.
+  ctx.save(); ctx.clip(torso);
+  const cor = new Path2D();
+  cor.moveTo(-100, -62); cor.quadraticCurveTo(0, -84, 100, -62); cor.lineTo(100, 12); cor.lineTo(-100, 12); cor.closePath();
+  cel(cor, P.accent, { dx: -6, dy: -3, lw: 2 });
+  ctx.strokeStyle = rgba(P.accent.light, 0.9); ctx.lineWidth = 1.6;
+  for (let y = -66; y < -4; y += 12) {
+    ctx.beginPath(); ctx.moveTo(-5, y); ctx.lineTo(5, y + 10); ctx.moveTo(5, y); ctx.lineTo(-5, y + 10); ctx.stroke();
+  }
+  ctx.strokeStyle = P.accent.line; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(-7, -70); ctx.lineTo(-7, 8); ctx.moveTo(7, -70); ctx.lineTo(7, 8); ctx.stroke();
+  // Shadow under the bust.
+  for (const m of bust) {
+    const g = bustGeom(m.s);
+    ctx.fillStyle = rgba(P.blouse.line, 0.25);
+    ctx.fill(ellipsePath(g.cx + m.ox + m.s * 2, g.cy + m.oy + g.r * 0.35, g.r * 0.95, g.r * 0.7));
+  }
+  ctx.restore();
+
+  // Bust with spring offset, stretched along its motion.
+  const order = [...bust].sort((a, b) => a.s - b.s);
+  for (const m of order) {
+    const g = bustGeom(m.s);
+    const st = clamp(m.oy / g.r, -0.5, 0.5);
+    const rx = g.r * (1 - 0.1 * st), ry = g.r * (1 + 0.18 * st);
+    ctx.save();
+    ctx.translate(g.cx + m.ox, g.cy + m.oy);
+    ctx.rotate(clamp(m.ox / g.r, -0.5, 0.5) * 0.35);
+    const p = bustPath(0, 0, g.r, rx, ry);
+    cel(p, P.blouse, { dx: -7, dy: -7, line: false });
+    ctx.strokeStyle = P.blouse.line; ctx.lineWidth = 2; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-m.s * rx, ry * 0.1);
+    ctx.bezierCurveTo(-m.s * rx, ry * 0.6, -m.s * rx * 0.55, ry * 0.9, 0, ry * 0.9);
+    ctx.bezierCurveTo(m.s * rx * 0.55, ry * 0.9, m.s * rx, ry * 0.6, m.s * rx, ry * 0.1);
+    ctx.bezierCurveTo(m.s * rx, -ry * 0.25, m.s * rx * 0.9, -ry * 0.45, m.s * rx * 0.75, -ry * 0.6);
+    ctx.stroke();
+    ctx.fillStyle = rgba(P.blouse.light, 0.6);
+    ctx.fill(ellipsePath(-rx * 0.3, -ry * 0.35, rx * 0.28, ry * 0.16, -0.5));
+    ctx.restore();
+  }
+  // Fabric fold at the center.
+  ctx.strokeStyle = rgba(P.blouse.line, 0.6); ctx.lineWidth = 1.5;
+  const gL = bustGeom(-1);
+  ctx.beginPath(); ctx.moveTo(0, gL.cy - gL.r * 0.5); ctx.quadraticCurveTo(1, gL.cy, 0, gL.cy + gL.r * 0.5); ctx.stroke();
+}
+function drawCollar() {
+  setBone(spine);
+  for (const s of [-1, 1]) {
+    const p = new Path2D();
+    p.moveTo(0, -172);
+    p.bezierCurveTo(s * -10, -176, s * -26, -182, s * -34, -176);
+    p.bezierCurveTo(s * -36, -160, s * -22, -150, s * -8, -156);
+    p.quadraticCurveTo(s * -2, -162, 0, -172);
+    p.closePath();
+    cel(p, { ...P.blouse, base: P.blouse.light }, { dx: -3, dy: -3, lw: 1.8 });
+  }
+  setView();
+  for (const st of ribbonStrands) drawStrand(st, P.accent);
+  setBone(spine);
+  for (const s of [-1, 1]) {
+    const p = new Path2D();
+    p.moveTo(0, -168);
+    p.bezierCurveTo(s * 8, -182, s * 26, -182, s * 23, -168);
+    p.bezierCurveTo(s * 21, -158, s * 8, -160, 0, -168);
+    p.closePath();
+    cel(p, P.accent, { dx: -2, dy: -3, lw: 1.6 });
+  }
+  cel(ellipsePath(0, -168, 5.5, 6.5), P.accent, { dx: -1, dy: -2, lw: 1.6 });
+}
+function drawSkirt() {
+  setView();
+  const W = [], H = [];
+  for (let i = 0; i < SKIRT_N; i++) {
+    const tt = (i / (SKIRT_N - 1)) * 2 - 1;
+    W.push(toWorld(pelvis, tt * skirtWaist(), 4));
+    H.push([skirt[i].x, skirt[i].y]);
+  }
+  // Pleat notches between hem points.
+  const notch = (i) => {
+    const a = H[i], b = H[i + 1], wa = W[i], wb = W[i + 1];
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    const dx = mx - (wa[0] + wb[0]) / 2, dy = my - (wa[1] + wb[1]) / 2, l = Math.hypot(dx, dy) || 1;
+    return [mx + (dx / l) * 6, my + (dy / l) * 6];
+  };
+  const outline = new Path2D();
+  outline.moveTo(W[0][0], W[0][1]);
+  for (let i = 1; i < SKIRT_N; i++) outline.lineTo(W[i][0], W[i][1]);
+  outline.lineTo(H[SKIRT_N - 1][0], H[SKIRT_N - 1][1]);
+  for (let i = SKIRT_N - 2; i >= 0; i--) { const n = notch(i); outline.lineTo(n[0], n[1]); outline.lineTo(H[i][0], H[i][1]); }
+  outline.closePath();
+  ctx.fillStyle = P.skirt.base; ctx.fill(outline);
+  ctx.save(); ctx.clip(outline);
+  for (let i = 0; i < SKIRT_N - 1; i++) {
+    if (i % 2 === 0) continue;
+    const p = new Path2D(), n = notch(i);
+    p.moveTo(W[i][0], W[i][1]); p.lineTo(W[i + 1][0], W[i + 1][1]); p.lineTo(H[i + 1][0], H[i + 1][1]);
+    p.lineTo(n[0], n[1]); p.lineTo(H[i][0], H[i][1]); p.closePath();
+    ctx.fillStyle = P.skirt.shade; ctx.fill(p);
+  }
+  const [lx] = toWorld(pelvis, -skirtHem(), 0), [rx] = toWorld(pelvis, skirtHem(), 0);
+  const g = ctx.createLinearGradient(lx, 0, rx, 0);
+  g.addColorStop(0, "rgba(255,255,255,0.12)"); g.addColorStop(0.5, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(40,20,70,0.22)");
+  ctx.fillStyle = g; ctx.fillRect(lx - 200, -400, rx - lx + 400, 1200);
+  ctx.strokeStyle = P.skirt.line; ctx.lineWidth = 1.3;
+  for (let i = 1; i < SKIRT_N - 1; i++) { ctx.beginPath(); ctx.moveTo(W[i][0], W[i][1]); ctx.lineTo(H[i][0], H[i][1]); ctx.stroke(); }
+  // Hem trim.
+  ctx.strokeStyle = rgba(P.skirt.light, 0.9); ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  for (let i = 0; i < SKIRT_N; i++) {
+    const x = lerp(H[i][0], W[i][0], 0.09), y = lerp(H[i][1], W[i][1], 0.09);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = P.skirt.line; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke(outline);
+  // Waistband.
+  setBone(pelvis);
+  const ww = skirtWaist() + 2, band = new Path2D();
+  band.moveTo(-ww, -10); band.quadraticCurveTo(0, -6, ww, -10); band.lineTo(ww + 1, 10); band.quadraticCurveTo(0, 14, -ww - 1, 10); band.closePath();
+  cel(band, { ...P.skirt, base: P.skirt.shade, shade: P.skirt.deep }, { dx: -3, dy: -2, lw: 1.8 });
+  cel(ellipsePath(ww * 0.55, 1, 4, 4), P.accent, { dx: -1, dy: -1, lw: 1.2 });
+}
+function legPaths(L1, L2) {
+  const thigh = new Path2D();
+  thigh.moveTo(-30, -10);
+  thigh.bezierCurveTo(-35, 0.4 * L1, -23, 0.75 * L1, -17, L1 + 4);
+  thigh.lineTo(17, L1 + 4);
+  thigh.bezierCurveTo(22, 0.75 * L1, 33, 0.3 * L1, 28, -10);
+  thigh.closePath();
+  // Outline only the sides of the thigh so no seam shows at the knee.
+  const thighSides = new Path2D();
+  thighSides.moveTo(-30, -10);
+  thighSides.bezierCurveTo(-35, 0.4 * L1, -23, 0.75 * L1, -17, L1 + 4);
+  thighSides.moveTo(17, L1 + 4);
+  thighSides.bezierCurveTo(22, 0.75 * L1, 33, 0.3 * L1, 28, -10);
+  const shin = new Path2D();
+  shin.moveTo(-17, -6);
+  shin.bezierCurveTo(-22, 0.22 * L2, -20, 0.5 * L2, -9, L2);
+  shin.lineTo(9, L2);
+  shin.bezierCurveTo(19, 0.55 * L2, 22, 0.22 * L2, 17, -6);
+  shin.closePath();
+  return { thigh, thighSides, shin };
+}
+function drawLegs() {
+  const op = state.legwearOpacity;
+  for (const leg of legs) {
+    const L1 = leg.l1, L2 = leg.l2, { thigh, thighSides, shin } = legPaths(L1, L2);
+    setBone(leg.shin);
+    cel(shin, P.skin, { dx: -4, dy: 0, lw: 1.8 });
+    if (op > 0) { ctx.globalAlpha = op; cel(shin, P.leg, { dx: -4, dy: 0, line: false }); ctx.globalAlpha = 1; ctx.strokeStyle = P.skin.line; ctx.lineWidth = 1.8; ctx.stroke(shin); }
+    // Knee-high boot.
+    const boot = new Path2D();
+    boot.moveTo(-21.5, 0.47 * L2); boot.quadraticCurveTo(0, 0.44 * L2, 21.5, 0.47 * L2);
+    boot.bezierCurveTo(20, 0.7 * L2, 13, 0.88 * L2, 11, L2 + 4); boot.lineTo(-11, L2 + 4);
+    boot.bezierCurveTo(-13, 0.88 * L2, -20, 0.7 * L2, -21.5, 0.47 * L2); boot.closePath();
+    cel(boot, P.boots, { dx: -5, dy: 0, lw: 1.8 });
+    const cuff = new Path2D();
+    cuff.moveTo(-23, 0.47 * L2); cuff.quadraticCurveTo(0, 0.43 * L2, 23, 0.47 * L2);
+    cuff.lineTo(22, 0.53 * L2); cuff.quadraticCurveTo(0, 0.5 * L2, -22, 0.53 * L2); cuff.closePath();
+    cel(cuff, { ...P.boots, base: P.boots.light }, { dx: -3, dy: 0, lw: 1.6 });
+    setBone(leg.foot);
+    ctx.scale(-leg.s, 1);
+    const foot = new Path2D();
+    foot.moveTo(-11, -4); foot.bezierCurveTo(-14, 14, -16, 26, -12, 36);
+    foot.quadraticCurveTo(-2, 46, 8, 40); foot.bezierCurveTo(14, 32, 14, 14, 11, -4); foot.closePath();
+    cel(foot, P.boots, { dx: 3, dy: -3, lw: 1.8 });
+    ctx.strokeStyle = P.boots.deep; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-12, 37); ctx.quadraticCurveTo(-2, 47, 8, 41); ctx.stroke();
+    setBone(leg.thigh);
+    cel(thigh, P.skin, { dx: -5, dy: 0, line: false });
+    if (op > 0) {
+      ctx.globalAlpha = op; cel(thigh, P.leg, { dx: -5, dy: 0, line: false }); ctx.globalAlpha = 1;
+      ctx.fillStyle = `rgba(255,255,255,${0.18 * op})`; ctx.fill(ellipsePath(-8, 0.7 * L1, 5, 26));
+    }
+    ctx.strokeStyle = P.skin.line; ctx.lineWidth = 1.8; ctx.stroke(thighSides);
+  }
+}
+function drawArms() {
+  for (const arm of arms) {
+    setBone(arm.fore);
+    const fore = new Path2D();
+    fore.moveTo(-11, -4); fore.bezierCurveTo(-13, 40, -9, 80, -7, 102);
+    fore.lineTo(7, 102); fore.bezierCurveTo(9, 80, 13, 40, 11, -4); fore.closePath();
+    cel(fore, P.skin, { dx: -4, dy: 0, lw: 1.8 });
+    setBone(arm.hand);
+    ctx.scale(-arm.s, 1);
+    const hand = new Path2D();
+    hand.moveTo(-8, -3); hand.bezierCurveTo(-11, 10, -10, 22, -4, 28);
+    hand.quadraticCurveTo(0, 31, 5, 27); hand.bezierCurveTo(10, 20, 10, 8, 8, -3); hand.closePath();
+    cel(hand, P.skin, { dx: -3, dy: -2, lw: 1.6 });
+    const thumb = ellipsePath(9, 8, 3.6, 8, -0.5);
+    cel(thumb, P.skin, { dx: -1, dy: -1, lw: 1.4 });
+    setBone(arm.upper);
+    const up = new Path2D();
+    up.moveTo(-15, -4); up.bezierCurveTo(-17, 40, -13, 90, -11, 114);
+    up.lineTo(11, 114); up.bezierCurveTo(13, 90, 16, 40, 14, -4); up.closePath();
+    cel(up, P.skin, { dx: -4, dy: 0, lw: 1.8 });
+    const sleeve = new Path2D();
+    sleeve.moveTo(-19, -12); sleeve.bezierCurveTo(-25, 18, -23, 44, -17, 54);
+    sleeve.quadraticCurveTo(0, 61, 17, 54); sleeve.bezierCurveTo(23, 44, 25, 18, 19, -12);
+    sleeve.quadraticCurveTo(0, -20, -19, -12); sleeve.closePath();
+    cel(sleeve, P.blouse, { dx: arm.s * 5, dy: -3, lw: 2 });
+    ctx.strokeStyle = P.accent.base; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-16, 51); ctx.quadraticCurveTo(0, 57, 16, 51); ctx.stroke();
+  }
+}
+function drawRig() {
+  setView();
+  ctx.lineWidth = 3 / vs * dpr; ctx.strokeStyle = "rgba(20,180,160,0.9)"; ctx.fillStyle = "rgba(20,180,160,0.9)";
+  const visit = (b) => {
+    for (const k of b.kids) { ctx.beginPath(); ctx.moveTo(b.wx, b.wy); ctx.lineTo(k.wx, k.wy); ctx.stroke(); visit(k); }
+    ctx.beginPath(); ctx.arc(b.wx, b.wy, 5, 0, Math.PI * 2); ctx.fill();
+  };
+  visit(pelvis);
+  ctx.fillStyle = "rgba(255,120,40,0.9)"; ctx.strokeStyle = "rgba(255,120,40,0.6)"; ctx.lineWidth = 1.5;
+  for (const st of [...backStrands, ...tailStrands, ...frontStrands, ...ribbonStrands]) {
+    ctx.beginPath(); st.p.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
+    for (const p of st.p) { ctx.beginPath(); ctx.arc(p[0], p[1], 2.5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.strokeStyle = "rgba(230,40,140,0.9)"; ctx.fillStyle = "rgba(230,40,140,0.9)";
+  for (const m of bust) { ctx.beginPath(); ctx.moveTo(m.px, m.py); ctx.lineTo(m.x, m.y); ctx.stroke(); ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, Math.PI * 2); ctx.fill(); }
+  for (let i = 0; i < SKIRT_N; i++) { const m = skirt[i]; ctx.beginPath(); ctx.arc(m.x, m.y, 3, 0, Math.PI * 2); ctx.fill(); }
+}
+
+function render() {
+  drawBackground();
+  setView();
+  for (const st of tailStrands) drawStrand(st, P.hair);
+  for (const st of backStrands) drawStrand(st, P.hair);
+  drawBackHairMass();
+  drawNeck();
+  drawLegs();
+  drawTorso();
+  drawSkirt();
+  drawCollar();
+  drawArms();
+  const info = drawHead();
+  drawFrontHair(info);
+  if (showRig) drawRig();
+}
+
+// ---------------------------------------------------------------- loop
+let last = performance.now(), acc = 0;
+const H = 1 / 120;
+function frame(now) {
+  acc += Math.min((now - last) / 1000, 0.05);
+  last = now;
+  while (acc >= H) { step(H); acc -= H; }
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- interaction
+function hop() {
+  if (root.mode !== "ground") return;
+  root.mode = "air"; root.vy = -1000; crouchV = -200;
+}
+cv.addEventListener("pointermove", (e) => {
+  const r = cv.getBoundingClientRect();
+  pointer = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+  lastPointerMove = t;
+  if (drag.down && !drag.active && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 6) {
+    drag.active = true; root.mode = "drag"; cv.classList.add("dragging");
+  }
+  if (drag.active) { drag.tx = pointer.x - drag.ox; drag.ty = pointer.y - drag.oy; }
+});
+cv.addEventListener("pointerdown", (e) => {
+  const r = cv.getBoundingClientRect();
+  const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+  pointer = w;
+  const [hx, hy] = toWorld(head, 0, -64);
+  const onHead = Math.hypot(w.x - hx, w.y - hy) < 80;
+  const onBody = Math.abs(w.x - root.x) < 140 && w.y > hy - 90 && w.y < root.y + floorY();
+  if (!onHead && !onBody) return;
+  cv.setPointerCapture(e.pointerId);
+  Object.assign(drag, { down: true, active: false, sx: e.clientX, sy: e.clientY, ox: w.x - root.x, oy: w.y - root.y, tx: root.x, ty: root.y, onHead });
+});
+function endDrag() {
+  if (drag.down && !drag.active && drag.onHead) { patTimer = 1.6; crouchV += 120; }
+  if (drag.active) {
+    root.vx = clamp(root.vx, -1500, 1500); root.vy = clamp(root.vy, -1500, 1500);
+    root.mode = root.y < -20 ? "air" : "ground";
+  }
+  drag.down = drag.active = false;
+  cv.classList.remove("dragging");
+}
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+cv.addEventListener("pointerleave", () => { if (!drag.down) pointer = null; });
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); hop(); }
+});
+
+// ---------------------------------------------------------------- editor UI
+const COLOR_FIELDS = [["hair", "Hair"], ["eyes", "Eyes"], ["skin", "Skin"], ["blouse", "Blouse"], ["accent", "Corset & bow"], ["skirt", "Skirt"], ["legwear", "Tights"], ["boots", "Boots"], ["blush", "Blush"]];
+const BODY_FIELDS = [["bust", "Bust", 0.8, 1.8], ["waist", "Waist", 0.8, 1.15], ["hips", "Hips", 0.85, 1.35], ["legs", "Leg length", 0.9, 1.15], ["hairLen", "Hair length", 0.4, 1.6], ["legwearOpacity", "Tights opacity", 0, 1]];
+const PHYS_FIELDS = [["firmness", "Firmness", 0, 1], ["bounce", "Bounciness", 0, 1], ["hairStiff", "Hair stiffness", 0, 1], ["wind", "Wind", 0, 1]];
+const SELECTS = [
+  ["hairStyle", "Hair style", [["long", "Long"], ["twin", "Twin tails"], ["pony", "Ponytail"], ["bob", "Bob"]]],
+  ["pose", "Pose", [["idle", "Idle"], ["hips", "Hands on hips"], ["wave", "Wave"], ["cheer", "Cheer"], ["shy", "Shy"]]],
+  ["expression", "Expression", [["smile", "Smile"], ["grin", "Grin"], ["neutral", "Neutral"], ["surprised", "Surprised"], ["shy", "Shy"]]],
+];
+const inputs = {};
+function row(label, control, out) {
+  const d = document.createElement("label"); d.className = "row";
+  const s = document.createElement("span"); s.textContent = label;
+  d.append(s, control, out || document.createElement("span"));
+  return d;
+}
+function buildUI() {
+  const colors = document.getElementById("colors");
+  for (const [k, label] of COLOR_FIELDS) {
+    const i = document.createElement("input"); i.type = "color";
+    i.addEventListener("input", () => { state.colors[k] = i.value; buildPalette(); save(); });
+    inputs["c_" + k] = i; colors.append(row(label, i));
+  }
+  const slider = (parent, [k, label, min, max]) => {
+    const i = document.createElement("input"); i.type = "range"; i.min = min; i.max = max; i.step = 0.01;
+    const o = document.createElement("output");
+    i.addEventListener("input", () => {
+      state[k] = +i.value; o.textContent = (+i.value).toFixed(2); save();
+      if (k === "hairLen") buildHair();
+      if (k === "legs") layout();
+    });
+    inputs[k] = [i, o]; parent.append(row(label, i, o));
+  };
+  BODY_FIELDS.forEach((f) => slider(document.getElementById("body"), f));
+  PHYS_FIELDS.forEach((f) => slider(document.getElementById("physics"), f));
+  for (const [k, label, opts] of SELECTS) {
+    const s = document.createElement("select");
+    for (const [v, t] of opts) s.append(new Option(t, v));
+    s.addEventListener("change", () => { state[k] = s.value; save(); if (k === "hairStyle") buildHair(); });
+    inputs[k] = s;
+    (k === "hairStyle" ? document.getElementById("body") : document.getElementById("pose")).append(row(label, s));
+  }
+  const presets = document.getElementById("presets");
+  for (const [name, c] of Object.entries(PRESETS)) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "swatch";
+    b.innerHTML = `<i style="background:linear-gradient(135deg, ${c.hair} 50%, ${c.skirt} 50%)"></i>${name}`;
+    b.addEventListener("click", () => { state.colors = { ...c }; syncUI(); buildPalette(); save(); });
+    presets.append(b);
+  }
+}
+function syncUI() {
+  for (const [k] of COLOR_FIELDS) inputs["c_" + k].value = state.colors[k];
+  for (const [k] of [...BODY_FIELDS, ...PHYS_FIELDS]) { inputs[k][0].value = state[k]; inputs[k][1].textContent = (+state[k]).toFixed(2); }
+  for (const [k] of SELECTS) inputs[k].value = state[k];
+}
+const hopBtn = document.getElementById("hop"), danceBtn = document.getElementById("dance"), rigBtn = document.getElementById("rig");
+hopBtn.addEventListener("click", hop);
+danceBtn.addEventListener("click", () => { dancing = !dancing; danceBtn.classList.toggle("on", dancing); });
+rigBtn.addEventListener("click", () => { showRig = !showRig; rigBtn.classList.toggle("on", showRig); });
+document.getElementById("random").addEventListener("click", () => {
+  const hsl = (h, s, l) => {
+    const a = s * Math.min(l, 1 - l), f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0"); };
+    return "#" + f(0) + f(8) + f(4);
+  };
+  const r = Math.random, hue = r() * 360;
+  Object.assign(state.colors, {
+    hair: hsl(hue, 0.55 + r() * 0.3, 0.45 + r() * 0.3), eyes: hsl(r() * 360, 0.7, 0.45),
+    blouse: hsl(r() * 360, 0.3, 0.9 + r() * 0.08), accent: hsl(hue + 150 + r() * 60, 0.5, 0.3 + r() * 0.2),
+    skirt: hsl(hue + 160 + r() * 40, 0.45, 0.3 + r() * 0.3), legwear: hsl(r() * 360, 0.2, r() * 0.3),
+    boots: hsl(r() * 360, 0.3, 0.15 + r() * 0.3),
+  });
+  syncUI(); buildPalette(); save();
+});
+document.getElementById("reset").addEventListener("click", () => {
+  state = structuredClone(DEFAULTS); syncUI(); buildPalette(); buildHair(); layout(); save();
+});
+document.getElementById("png").addEventListener("click", () => {
+  cv.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "character.png"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+});
+
+buildUI(); syncUI(); buildPalette();
+layout();
+window.addEventListener("resize", layout);
+step(H); buildHair();
+for (let i = 0; i < 240; i++) step(H); // settle physics before the first frame
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

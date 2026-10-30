@@ -47,3 +47,12 @@ public/problems.js   Problem generators and answer checking
 public/style.css     Styles (light and dark mode)
 test/                Tests for the generators and checker (npm test)
 ```
+
+## Character editor (bonus page)
+
+`public/character/index.html` is a standalone, rigged 2D anime character with physics, at http://localhost:3000/character/ (or open the file directly in a browser; it needs no server).
+
+- **Rig**: bone hierarchy with two-bone IK legs (feet stay planted, knees bend when she lands or is pushed down), FK arms, and a head and eyes that follow the cursor
+- **Physics**: spring-mass jiggle on the chest, a pleated skirt hem that sways, and verlet hair strands and ribbons with adjustable stiffness and wind
+- **Interaction**: drag to pick her up and drop her, click her head for a head pat, Hop / Dance buttons (Space hops), and "Show rig" to see the bones and physics points
+- **Editor**: color pickers for every material plus presets, sliders for bust, waist, hips, leg and hair length, hair styles, poses, expressions, and "Save PNG". Settings persist in the browser.

@@ -7,7 +7,7 @@ A stylized, cel-shaded 3D anime witch modeled after a character reference sheet:
 | File | What it is |
 |---|---|
 | `witch_character.blend` | The rigged, posed and animated character (face texture packed in) |
-| `witch_character.glb` | glTF export for game engines (flat colors, no outlines) |
+| `witch_character.glb` | glTF export for game engines (flat colors, no ink lines) |
 | `build_witch.py` | The script that generates everything from scratch |
 | `renders/` | Hero render, face close-up, front/side/back turnaround, character sheet, idle animation GIF |
 
@@ -23,9 +23,17 @@ The ponytails and the chest are simulated as damped springs: a verlet chain for 
 
 ![Idle animation](renders/idle_jiggle.gif)
 
-## Shading
+## Modeling
 
-The materials are emission-only toon shaders: N·L picks two or three flat tones through a constant color ramp. Outlines come from inverted-hull Solidify modifiers. Together they give the flat anime look in both Cycles and EEVEE, with no lights needed.
+- The body and garments are lofted from elliptical cross-sections. The bust is sculpted into the torso and the jacket, not added as separate shapes.
+- Hair is built from flat, lens-shaped clumps: the crown flows from a side part into each tail, the bangs sweep across the forehead, and each ponytail is a wavy mass around a solid core.
+- The gloved hands have jointed fingers: a fist around the staff and a relaxed hand on the hip.
+- Garment details: princess seams, back lacing, a stand collar with folded flaps, a necktie lying over the bust, belt loops, pocket and fly seams, garters with triangle cut-outs, buckled boots, gold charms, and a translucent ribbon on her left wrist.
+- The face has a modeled nose and a painted texture (`textures/face.png`).
+
+## Shading and lines
+
+The materials are emission-only toon shaders: N·L picks two or three flat tones through a constant color ramp, so no lights are needed. The ink lines come from Freestyle, which draws silhouettes, creases, material borders and the seams marked on the garments. Both work in Cycles and EEVEE.
 
 ## Rebuilding
 

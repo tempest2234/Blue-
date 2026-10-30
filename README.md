@@ -56,3 +56,7 @@ test/                Tests for the generators and checker (npm test)
 - **Physics**: spring-mass jiggle on the chest, a pleated skirt hem that sways, and verlet hair strands and ribbons with adjustable stiffness and wind
 - **Interaction**: drag to pick her up and drop her, click her head for a head pat, Hop / Dance buttons (Space hops), and "Show rig" to see the bones and physics points
 - **Editor**: color pickers for every material plus presets, sliders for bust, waist, hips, leg and hair length, hair styles, poses, expressions, and "Save PNG". Settings persist in the browser.
+
+## Blender character
+
+`blender/` contains a rigged, cel-shaded 3D witch character built procedurally in Blender. It has spring physics baked into its idle animation. See [blender/README.md](blender/README.md).

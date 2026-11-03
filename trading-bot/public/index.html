@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Trade Bot">
+  <title>Trade Bot</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="login" class="hidden">
+    <h1>Trade Bot</h1>
+    <form id="login-form">
+      <label for="password">Dashboard password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit" class="primary">Log in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </main>
+
+  <main id="dash" class="hidden">
+    <header>
+      <div>
+        <h1>Trade Bot</h1>
+        <span id="mode" class="badge"></span>
+        <span id="market" class="badge"></span>
+      </div>
+      <button id="logout" class="link">Log out</button>
+    </header>
+
+    <section class="card" id="banner-wrap"><p id="banner"></p></section>
+
+    <section class="stats">
+      <div class="stat"><span class="label">Equity</span><span id="equity" class="value">–</span></div>
+      <div class="stat"><span class="label">Today</span><span id="today" class="value">–</span></div>
+      <div class="stat"><span class="label">Buying power</span><span id="bp" class="value">–</span></div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <div>
+          <strong>Bot: <span id="bot-state">–</span></strong>
+          <div id="bot-times" class="muted small"></div>
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="toggle" class="primary">Pause</button>
+        <button id="run">Check now</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Positions</h2>
+      <ul id="positions" class="list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Signals</h2>
+      <ul id="signals" class="list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Activity</h2>
+      <ul id="log" class="list log"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Settings</h2>
+      <p id="settings" class="muted small"></p>
+      <button id="close-all" class="danger">Emergency: sell everything &amp; pause</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

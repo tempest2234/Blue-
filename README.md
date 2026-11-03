@@ -47,3 +47,7 @@ public/problems.js   Problem generators and answer checking
 public/style.css     Styles (light and dark mode)
 test/                Tests for the generators and checker (npm test)
 ```
+
+## Also in this repo
+
+- [`trading-bot/`](trading-bot/README.md): an automated stock trading bot (Alpaca) with a phone dashboard

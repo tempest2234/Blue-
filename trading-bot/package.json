@@ -1,0 +1,16 @@
+{
+  "name": "phone-trading-bot",
+  "version": "1.0.0",
+  "description": "Automated stock trading bot (Alpaca) with a phone-friendly control dashboard",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "backtest": "node scripts/backtest.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  }
+}

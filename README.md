@@ -1,3 +1,26 @@
+# Blue
+
+This repo holds two web apps:
+
+- **Fit Day** (`fitness/`): stay in shape with a calorie tracker and daily tasks.
+- **Math Climb** (`public/`): leveled math practice with an AI tutor.
+
+## Fit Day
+
+A fitness app that helps you stay in shape day by day.
+
+- **Personal calorie goal**: enter your age, height, weight (kg/cm or lb/ft), activity level and goal (lose weight, stay in shape, build muscle). It works out your resting burn (Mifflin-St Jeor), a daily calorie goal and a protein goal.
+- **Calorie tracker**: log food by meal with calories and optional protein, or tap a quick-add food. A ring shows how many calories you have left.
+- **Tasks through the day**: a fresh plan every day, split into Morning, Midday, Afternoon and Evening, with a workout that fits your goal (Sundays are lighter rest days). Ticking off a workout adds its estimated calories burned to your budget. You can add your own tasks too.
+- **Water tracker** (8 glasses), a **7-day calorie chart**, and a **streak** for days where you finish at least half your tasks.
+- Works on phones and in dark mode. Your data stays in your browser (localStorage); nothing is sent anywhere.
+
+To use it, open `fitness/index.html` in a browser, or run `npm start` and go to http://localhost:3000/fitness/.
+
+The numbers are estimates, not medical advice.
+
+---
+
 # Math Climb
 
 A web app for practicing math at five levels, with an AI tutor (Claude) that helps when you get stuck.
@@ -45,5 +68,6 @@ public/index.html    The page
 public/app.js        UI logic: levels, scoring, tutor chat
 public/problems.js   Problem generators and answer checking
 public/style.css     Styles (light and dark mode)
-test/                Tests for the generators and checker (npm test)
+fitness/             Fit Day: index.html, app.js (UI), logic.js (calculations, task plans), style.css
+test/                Tests (npm test)
 ```

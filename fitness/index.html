@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fit Day</title>
+  <meta name="theme-color" content="#16a34a">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">●</span>
+      <div>
+        <h1>Fit Day</h1>
+        <p id="today-label" class="muted"></p>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" hidden>
+    <button data-tab="today" class="active">Today</button>
+    <button data-tab="food">Food</button>
+    <button data-tab="tasks">Tasks</button>
+    <button data-tab="profile">Profile</button>
+  </nav>
+
+  <main>
+    <!-- Setup / profile -->
+    <section id="view-profile" class="view" hidden>
+      <div class="card">
+        <h2 id="profile-title">Let's set up your plan</h2>
+        <p class="muted" id="profile-intro">Tell us a little about you. We use it to work out your daily calorie goal and pick tasks that fit your goal.</p>
+        <form id="profile-form" class="grid-form">
+          <fieldset class="full units">
+            <legend>Units</legend>
+            <label><input type="radio" name="units" value="metric" checked> kg / cm</label>
+            <label><input type="radio" name="units" value="imperial"> lb / ft + in</label>
+          </fieldset>
+          <label>Sex
+            <select name="sex" required>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </label>
+          <label>Age
+            <input name="age" type="number" min="13" max="100" required>
+          </label>
+          <label class="metric-only">Height (cm)
+            <input name="heightCm" type="number" min="100" max="250" step="0.1">
+          </label>
+          <div class="imperial-only height-imp">
+            <label>Height (ft)
+              <input name="heightFt" type="number" min="3" max="8">
+            </label>
+            <label>(in)
+              <input name="heightIn" type="number" min="0" max="11.9" step="0.1">
+            </label>
+          </div>
+          <label><span class="weight-label">Weight (kg)</span>
+            <input name="weight" type="number" min="30" max="660" step="0.1" required>
+          </label>
+          <label class="full">How active are you?
+            <select name="activity" id="activity-select"></select>
+          </label>
+          <label class="full">Your goal
+            <select name="goal" id="goal-select"></select>
+          </label>
+          <p id="profile-error" class="error full" role="alert"></p>
+          <button type="submit" class="primary full">Save my plan</button>
+        </form>
+      </div>
+      <div class="card" id="profile-summary" hidden>
+        <h2>Your numbers</h2>
+        <dl class="numbers" id="numbers"></dl>
+        <p class="muted small">These are estimates from the Mifflin-St Jeor formula, not medical advice. If you have a health condition, check with a doctor before changing your diet or exercise.</p>
+        <button class="danger" id="reset-btn" type="button">Delete all my data</button>
+      </div>
+    </section>
+
+    <!-- Today -->
+    <section id="view-today" class="view" hidden>
+      <div class="card hero">
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" class="ring" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" class="ring-bg"/>
+            <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
+          </svg>
+          <div class="ring-text">
+            <strong id="remaining-num">0</strong>
+            <span id="remaining-label">kcal left</span>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><span class="muted">Goal</span><strong id="t-goal">0</strong></div>
+          <div class="tile"><span class="muted">Eaten</span><strong id="t-eaten">0</strong></div>
+          <div class="tile"><span class="muted">Burned</span><strong id="t-burned">0</strong></div>
+          <div class="tile"><span class="muted">Protein</span><strong id="t-protein">0 g</strong></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h2>Water</h2>
+          <span class="muted" id="water-label">0 / 8 glasses</span>
+        </div>
+        <div class="water" id="water"></div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h2>Up next</h2>
+          <span class="muted" id="tasks-progress"></span>
+        </div>
+        <div class="bar"><div id="tasks-bar"></div></div>
+        <ul class="task-list" id="next-tasks"></ul>
+        <button class="link" data-goto="tasks">See all of today's tasks →</button>
+      </div>
+
+      <div class="card">
+        <h2>Last 7 days</h2>
+        <div class="week" id="week"></div>
+        <p class="muted small legend"><span class="sw sw-in"></span> Calories eaten <span class="sw sw-over"></span> Over goal <span class="sw sw-line"></span> Daily goal</p>
+        <p class="streak" id="streak"></p>
+      </div>
+    </section>
+
+    <!-- Food -->
+    <section id="view-food" class="view" hidden>
+      <div class="card">
+        <h2>Log food</h2>
+        <form id="food-form" class="grid-form">
+          <label class="full">What did you eat?
+            <input name="food" required maxlength="80" placeholder="e.g. Turkey sandwich">
+          </label>
+          <label>Calories
+            <input name="kcal" type="number" min="0" max="5000" required>
+          </label>
+          <label>Protein (g, optional)
+            <input name="protein" type="number" min="0" max="500">
+          </label>
+          <label class="full">Meal
+            <select name="meal">
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+              <option value="snack">Snack</option>
+            </select>
+          </label>
+          <button type="submit" class="primary full">Add</button>
+        </form>
+        <h3>Quick add</h3>
+        <div class="chips" id="quick-foods"></div>
+      </div>
+      <div class="card">
+        <div class="row-between">
+          <h2>Today's food</h2>
+          <span class="muted" id="food-total"></span>
+        </div>
+        <div id="food-list"></div>
+      </div>
+    </section>
+
+    <!-- Tasks -->
+    <section id="view-tasks" class="view" hidden>
+      <div class="card">
+        <div class="row-between">
+          <h2>Today's tasks</h2>
+          <span class="muted" id="tasks-count"></span>
+        </div>
+        <p class="muted small">A fresh plan every day. Workout tasks add their estimated calories burned to your daily budget when you tick them off.</p>
+        <div id="slots"></div>
+      </div>
+      <div class="card">
+        <h2>Add your own task</h2>
+        <form id="task-form" class="grid-form">
+          <label class="full">Task
+            <input name="text" required maxlength="100" placeholder="e.g. Walk the dog">
+          </label>
+          <label>When
+            <select name="slot" id="slot-select"></select>
+          </label>
+          <label>Calories burned (optional)
+            <input name="kcal" type="number" min="0" max="2000">
+          </label>
+          <button type="submit" class="primary full">Add task</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

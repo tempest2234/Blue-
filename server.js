@@ -10,6 +10,7 @@ const MODEL = process.env.TUTOR_MODEL || "claude-opus-5-5";
 const app = express();
 app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(here, "public")));
+app.use("/fitness", express.static(path.join(here, "fitness")));
 
 // The client is created lazily so the practice part of the app still works
 // without an API key; only the AI tutor needs one.
@@ -116,4 +117,5 @@ app.post("/api/tutor", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Math practice app running at http://localhost:${PORT}`);
+  console.log(`Fit Day fitness app running at http://localhost:${PORT}/fitness/`);
 });
